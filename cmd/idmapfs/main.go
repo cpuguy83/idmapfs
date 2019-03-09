@@ -48,7 +48,9 @@ func main() {
 	opts.Debug = true
 	conn := nodefs.NewFileSystemConnector(pathfs.NewPathNodeFs(fs, &pathfs.PathNodeFsOptions{Debug: true}).Root(), opts)
 	srv, err := fuse.NewServer(conn.RawFS(), flags.Arg(2), &fuse.MountOptions{
-		Name: "idmapfss",
+		AllowOther: true,
+		Name:       "idmapfs",
+		FsName:     "idmapfs",
 	})
 	if err != nil {
 		errorOut(err)
@@ -59,8 +61,6 @@ func main() {
 			fmt.Fprintln(os.Stderr, "error unmounting filesystem on shutdown:", err)
 		}
 	}
-
-	defer shutdown()
 
 	c := make(chan os.Signal)
 	signal.Notify(c, syscall.SIGTERM, syscall.SIGINT)
