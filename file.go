@@ -7,12 +7,12 @@ import (
 )
 
 type mappedFile struct {
-	fs *mapFS
+	m *idtools.IdentityMapping
 	nodefs.File
 }
 
 func (f *mappedFile) Chown(uid uint32, gid uint32) fuse.Status {
-	id, err := f.fs.m.ToHost(idtools.Identity{UID: int(uid), GID: int(gid)})
+	id, err := f.m.ToHost(idtools.Identity{UID: int(uid), GID: int(gid)})
 	if err != nil {
 		return f.File.Chown(uid, gid)
 	}

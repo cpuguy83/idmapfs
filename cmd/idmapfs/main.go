@@ -10,9 +10,7 @@ import (
 
 	"github.com/cpuguy83/idmapfs"
 	"github.com/cpuguy83/idmapfs/idtools"
-	"github.com/hanwen/go-fuse/fuse"
 	"github.com/hanwen/go-fuse/fuse/nodefs"
-	"github.com/hanwen/go-fuse/fuse/pathfs"
 	"github.com/pkg/errors"
 	"github.com/spf13/pflag"
 )
@@ -38,20 +36,13 @@ func main() {
 		errorOut(errors.Wrap(err, "invalid format for uid mapping"))
 	}
 
-	baseFS := pathfs.NewLoopbackFileSystem(flags.Arg(1))
-
-	fs := idmapfs.New(baseFS, mapping, "idmapfs", os.Stderr)
-	fs.SetDebug(debug)
+	fs := idmapfs.NewNodefs(nodefs.NewMemNodeFSRoot(flags.Arg(1)), mapping, os.Stderr)
 
 	opts := nodefs.NewOptions()
 	opts.Owner = nil
 	opts.Debug = true
-	conn := nodefs.NewFileSystemConnector(pathfs.NewPathNodeFs(fs, &pathfs.PathNodeFsOptions{Debug: true}).Root(), opts)
-	srv, err := fuse.NewServer(conn.RawFS(), flags.Arg(2), &fuse.MountOptions{
-		AllowOther: true,
-		Name:       "idmapfs",
-		FsName:     "idmapfs",
-	})
+
+	srv, _, err := nodefs.MountRoot(flags.Arg(2), fs, opts)
 	if err != nil {
 		errorOut(err)
 	}

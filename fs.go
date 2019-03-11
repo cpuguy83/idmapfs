@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"runtime"
 	"time"
 
 	"github.com/cpuguy83/idmapfs/idtools"
@@ -17,20 +16,21 @@ func New(fs pathfs.FileSystem, m *idtools.IdentityMapping, fsName string, logger
 	if logger == nil {
 		logger = ioutil.Discard
 	}
+
 	return &mapFS{
 		base:        fs,
-		m:           m,
 		name:        fsName,
 		debugWriter: logger,
+		mapper:      mapper{m: m, l: logger},
 	}
 }
 
 type mapFS struct {
 	base        pathfs.FileSystem
-	m           *idtools.IdentityMapping
 	name        string
 	debug       bool
 	debugWriter io.Writer
+	mapper
 }
 
 func (m *mapFS) String() string {
@@ -42,6 +42,7 @@ func (m *mapFS) String() string {
 
 func (m *mapFS) SetDebug(debug bool) {
 	m.debug = debug
+	m.mapper.debug = debug
 	m.base.SetDebug(debug)
 }
 
@@ -157,7 +158,7 @@ func (m *mapFS) OnMount(nodeFs *pathfs.PathNodeFs) {
 func (m *mapFS) Create(name string, flags uint32, mode uint32, c *fuse.Context) (nodefs.File, fuse.Status) {
 	m.unmapContext(c)
 	f, status := m.base.Create(name, flags, mode, c)
-	return &mappedFile{fs: m, File: f}, status
+	return &mappedFile{m: m.m, File: f}, status
 }
 
 func (m *mapFS) OnUnmount() {
@@ -192,44 +193,4 @@ func (m *mapFS) Readlink(name string, c *fuse.Context) (string, fuse.Status) {
 
 func (m *mapFS) StatFs(name string) *fuse.StatfsOut {
 	return m.base.StatFs(name)
-}
-
-func (m *mapFS) mapAttr(a *fuse.Attr) {
-	uid, gid, err := m.m.ToContainer(idFromOwner(&a.Owner))
-	if err != nil {
-		if m.debug {
-			fmt.Fprintf(m.debugWriter, "no mapping for host attr owner %d:%d\n", a.Owner.Uid, a.Owner.Gid)
-		}
-		return
-	}
-	if m.debug {
-		fmt.Fprintf(m.debugWriter, "mapping host attr owner %d:%d to container %d:%d\n", a.Owner.Uid, a.Owner.Gid, uid, gid)
-	}
-	a.Owner.Uid = uint32(uid)
-	a.Owner.Gid = uint32(gid)
-}
-
-func (m *mapFS) unmapContext(c *fuse.Context) {
-	var caller string
-	if m.debug {
-		_, file, line, _ := runtime.Caller(1)
-		caller = fmt.Sprintf("%s#%d", file, line)
-	}
-
-	id, err := m.m.ToHost(idFromOwner(&c.Owner))
-	if err != nil {
-		if m.debug {
-			fmt.Fprintf(m.debugWriter, "no mapping for user context %d:%d, caller: %s\n", c.Owner.Uid, c.Owner.Gid, caller)
-		}
-		return
-	}
-	if m.debug {
-		fmt.Fprintf(m.debugWriter, "mapping user context %d:%d to container context %d:%d, caller: %s\n", c.Owner.Uid, c.Owner.Gid, id.UID, id.GID, caller)
-	}
-	c.Owner.Uid = uint32(id.UID)
-	c.Owner.Gid = uint32(id.GID)
-}
-
-func idFromOwner(o *fuse.Owner) idtools.Identity {
-	return idtools.Identity{UID: int(o.Uid), GID: int(o.Gid)}
 }
